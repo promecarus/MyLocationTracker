@@ -4,6 +4,7 @@ import android.Manifest.permission.ACCESS_COARSE_LOCATION
 import android.Manifest.permission.ACCESS_FINE_LOCATION
 import android.content.IntentSender
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.location.Location
 import android.os.Bundle
 import android.os.Looper
@@ -25,7 +26,9 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.PolylineOptions
 import com.promecarus.mylocationtracker.databinding.ActivityMapsBinding
 import java.util.concurrent.TimeUnit
 
@@ -37,7 +40,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var locationRequest: LocationRequest
     private lateinit var locationCallback: LocationCallback
     private var isTracking = false
-
+    private var allLatLng = ArrayList<LatLng>()
+    private var boundsBuilder = LatLngBounds.Builder()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +64,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
         binding.btnStart.setOnClickListener {
             if (!isTracking) {
+                clearMaps()
                 updateTrackingStatus(true)
                 startLocationUpdates()
             } else {
@@ -70,22 +75,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        when {
-            permissions[ACCESS_FINE_LOCATION] ?: false -> {
-                // Precise location access granted.
-                getMyLastLocation()
-            }
-
-            permissions[ACCESS_COARSE_LOCATION] ?: false -> {
-                // Only approximate location access granted.
-                getMyLastLocation()
-            }
-
-            else -> {
-                // No location access granted.
-            }
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            getMyLastLocation()
         }
     }
 
@@ -107,7 +100,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 }
             }
         } else {
-            requestPermissionLauncher.launch(arrayOf(ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION))
+            requestPermissionLauncher.launch(
+                arrayOf(ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION).toString()
+            )
         }
     }
 
@@ -161,6 +156,19 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             override fun onLocationResult(locationResult: LocationResult) {
                 for (location in locationResult.locations) {
                     Log.d(TAG, "onLocationResult: " + location.latitude + ", " + location.longitude)
+                    val lastLatLng = LatLng(location.latitude, location.longitude)
+
+
+                    //draw polyline
+                    allLatLng.add(lastLatLng)
+                    mMap.addPolyline(
+                        PolylineOptions().color(Color.CYAN).width(10f).addAll(allLatLng)
+                    )
+
+                    //set boundaries
+                    boundsBuilder.include(lastLatLng)
+                    val bounds: LatLngBounds = boundsBuilder.build()
+                    mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 64))
                 }
             }
         }
@@ -176,11 +184,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-
     private fun stopLocationUpdates() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
     }
-
 
     override fun onResume() {
         super.onResume()
@@ -189,12 +195,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-
     override fun onPause() {
         super.onPause()
         stopLocationUpdates()
     }
-
 
     private fun updateTrackingStatus(newStatus: Boolean) {
         isTracking = newStatus
@@ -205,6 +209,11 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
+    private fun clearMaps() {
+        mMap.clear()
+        allLatLng.clear()
+        boundsBuilder = LatLngBounds.Builder()
+    }
 
     companion object {
         private const val TAG = "MapsActivity"
